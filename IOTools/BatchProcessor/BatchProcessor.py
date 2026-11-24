@@ -1959,19 +1959,32 @@ class BatchProcessorLogic(ScriptedLoadableModuleLogic):
         return paths
 
     @staticmethod
+    def _functional_bone_missing_inputs(row: dict) -> list[str]:
+        required = (
+            ("image_path", "image"),
+            ("seg_path", "segmentation"),
+            ("full_mask_path", "full mask"),
+            ("trab_mask_path", "trabecular mask"),
+            ("cort_mask_path", "cortical mask"),
+            ("voidspace_mask_path", "large voidspace mask"),
+        )
+        missing = [label for key, label in required if not str(row.get(key) or "").strip()]
+        if row.get("profile") != "functional-bone-native" and not str(row.get("common_region_path") or "").strip():
+            missing.append("common-region mask")
+        return missing
+
+    @staticmethod
+    def _functional_bone_missing_status(row: dict, missing: list[str]) -> str:
+        status = f"Missing {', '.join(missing)}"
+        if missing == ["large voidspace mask"]:
+            workflow = "native Voidspace" if row.get("profile") == "functional-bone-native" else "native or registered Voidspace"
+            status += f"; run {workflow}"
+        return status
+
+    @staticmethod
     def _functional_bone_command_for_row(root: Path, row: dict, *, force: bool = False) -> list[str]:
-        required = {
-            "image_path": "image",
-            "seg_path": "segmentation",
-            "full_mask_path": "full mask",
-            "trab_mask_path": "trabecular mask",
-            "cort_mask_path": "cortical mask",
-            "voidspace_mask_path": "large voidspace mask",
-        }
         registered = row.get("profile") != "functional-bone-native"
-        if registered:
-            required["common_region_path"] = "common-region mask"
-        missing = [label for key, label in required.items() if not str(row.get(key) or "").strip()]
+        missing = BatchProcessorLogic._functional_bone_missing_inputs(row)
         if missing:
             raise ValueError(f"Functional bone rows require {', '.join(missing)}.")
         _, output_dir = BatchProcessorLogic._microarchitecture_case_dirs(root, row)
@@ -2290,10 +2303,11 @@ class BatchProcessorLogic(ScriptedLoadableModuleLogic):
                         self._apply_timelapse_transformed_voidspace_inputs(root, row)
                 if tool == "microarchitecture" and self.is_functional_bone_profile(profile):
                     self._apply_functional_bone_inputs(root, row, contours, common_regions, profile)
-                    if not row.get("voidspace_mask_path"):
-                        group["missing"].add("voidspace")
+                    missing_inputs = self._functional_bone_missing_inputs(row)
+                    if missing_inputs:
+                        group["missing"].update(missing_inputs)
                         group["action"] = "Missing"
-                        row["status"] = "Missing voidspace: run native or registered Voidspace"
+                        row["status"] = self._functional_bone_missing_status(row, missing_inputs)
                 row_outputs = outputs_by_key.get(record.key, [])
                 if tool == "microarchitecture":
                     row_outputs = self._microarchitecture_outputs_for_inputs(
@@ -2397,7 +2411,12 @@ class BatchProcessorLogic(ScriptedLoadableModuleLogic):
                 if len(group_rows) < 2 and tool != "voidspace":
                     group["action"] = "Missing"
                     for row in group_rows:
-                        row["status"] = "Missing longitudinal series"
+                        if not (
+                            tool == "microarchitecture"
+                            and self.is_functional_bone_profile(profile)
+                            and self._functional_bone_missing_inputs(row)
+                        ):
+                            row["status"] = "Missing longitudinal series"
                 span = len(group_rows)
                 group_id = "|".join(str(value or "") for value in group_key)
                 for index, row in enumerate(group_rows):
@@ -2456,9 +2475,10 @@ class BatchProcessorLogic(ScriptedLoadableModuleLogic):
                     row["status"] = "Missing mask"
             if tool == "microarchitecture" and self.is_functional_bone_profile(profile):
                 self._apply_functional_bone_inputs(root, row, contours, common_regions, profile)
-                if not row.get("voidspace_mask_path"):
+                missing_inputs = self._functional_bone_missing_inputs(row)
+                if missing_inputs:
                     row["action"] = "Missing"
-                    row["status"] = "Missing voidspace: run native Voidspace" if profile == "functional-bone-native" else "Missing voidspace: run native or registered Voidspace"
+                    row["status"] = self._functional_bone_missing_status(row, missing_inputs)
             row_outputs = (
                 list(contours.selected.values())
                 if tool == "bone_contouring"
@@ -2875,10 +2895,16 @@ class BatchProcessorWidget(ScriptedLoadableModuleWidget):
     def _update_profile_hint(self):
         if not hasattr(self, "profileHintLabel"):
             return
-        hint = (
-            "For Bone Contouring, radius/tibia/knee settings are selected automatically from each row's VOI."
-        )
-        show_hint = self._selected_tool_key() == "bone_contouring" and self._is_selected_profile_shipped()
+        tool = self._selected_tool_key()
+        if tool == "timelapse":
+            hint = (
+                "Timelapsed profiles control registration and remodelling settings. "
+                "They do not describe how the input contours were created."
+            )
+            show_hint = True
+        else:
+            hint = "For Bone Contouring, radius/tibia/knee settings are selected automatically from each row's VOI."
+            show_hint = tool == "bone_contouring" and self._is_selected_profile_shipped()
         self.profileHintLabel.text = hint
         self.profileCombo.toolTip = hint if show_hint else ""
         self.profileHintLabel.visible = show_hint
@@ -3895,6 +3921,20 @@ print(json.dumps({"cases": rows}, sort_keys=True))
             lines.append(line)
         return "\n".join(lines).strip()
 
+    @staticmethod
+    def _process_error_status(exit_code: int, process_output: str) -> str:
+        lines = [line.strip() for line in str(process_output or "").splitlines() if line.strip()]
+        if not lines:
+            return f"Error {exit_code}"
+        exceptions = [
+            line for line in lines
+            if re.match(r"^[A-Za-z_][A-Za-z0-9_.]*(?:Error|Exception):\s+\S", line)
+        ]
+        detail = " ".join((exceptions[-1] if exceptions else lines[-1]).split())
+        if len(detail) > 140:
+            detail = detail[:137].rstrip() + "..."
+        return f"Error {exit_code}: {detail}"
+
     def _batch_process_finished(self, row_index, process, job=None, *signal_args):
         self._append_process_output(process)
         exit_code = int(signal_args[0]) if signal_args else int(process.exitCode())
@@ -3948,7 +3988,7 @@ print(json.dumps({"cases": rows}, sort_keys=True))
             self._append_log("[batch] finished")
         else:
             if job_visible:
-                self._set_row_status(row_index, f"Error {exit_code}")
+                self._set_row_status(row_index, self._process_error_status(exit_code, process_output))
                 self._set_row_action(row_index, "Run")
             self._append_log(f"[batch] failed with exit code {exit_code}")
         self._start_next_batch_job()

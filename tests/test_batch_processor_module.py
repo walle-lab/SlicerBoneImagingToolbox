@@ -3126,7 +3126,7 @@ def test_functional_bone_reports_missing_native_or_registered_voidspace(tmp_path
     )
 
     assert rows[0]["action"] == "Missing"
-    assert rows[0]["status"] == "Missing voidspace: run native or registered Voidspace"
+    assert rows[0]["status"] == "Missing large voidspace mask; run native or registered Voidspace"
 
 
 def test_functional_bone_existing_outputs_include_analysis_mask(tmp_path: Path, monkeypatch) -> None:
@@ -3369,6 +3369,69 @@ def test_native_functional_bone_discovery_needs_native_voidspace_not_common_regi
     else:
         assert [row["action"] for row in rows] == ["Missing", "Missing"]
         assert all("native Voidspace" in row["status"] for row in rows)
+
+
+def test_registered_functional_bone_with_only_aim_images_lists_all_missing_inputs(tmp_path, monkeypatch):
+    module = _import_batch_processor_module(monkeypatch)
+    for session in ("001", "002"):
+        image = (
+            tmp_path
+            / "sub-001"
+            / f"ses-{session}"
+            / "xct"
+            / f"sub-001_ses-{session}_voi-radiusleft_xct.AIM"
+        )
+        image.parent.mkdir(parents=True)
+        image.write_bytes(b"")
+
+    rows, _ = module.BatchProcessorLogic().discover_rows(
+        tmp_path,
+        tool="microarchitecture",
+        profile="functional-bone",
+        registered=True,
+    )
+
+    assert rows[0]["action"] == "Missing"
+    assert rows[0]["status"] == (
+        "Missing segmentation, full mask, trabecular mask, cortical mask, "
+        "large voidspace mask, common-region mask"
+    )
+
+
+def test_single_registered_functional_bone_aim_retains_missing_input_diagnosis(tmp_path, monkeypatch):
+    module = _import_batch_processor_module(monkeypatch)
+    image = tmp_path / "sub-001" / "ses-001" / "xct" / "sub-001_ses-001_voi-radiusleft_xct.AIM"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(b"")
+
+    rows, _ = module.BatchProcessorLogic().discover_rows(
+        tmp_path,
+        tool="microarchitecture",
+        profile="functional-bone",
+        registered=True,
+    )
+
+    assert rows[0]["action"] == "Missing"
+    assert rows[0]["status"].startswith("Missing segmentation, full mask")
+    assert rows[0]["status"] != "Missing longitudinal series"
+
+
+def test_batch_failure_status_includes_last_useful_process_line(monkeypatch):
+    module = _import_batch_processor_module(monkeypatch)
+
+    assert module.BatchProcessorWidget._process_error_status(
+        1,
+        "Traceback (most recent call last):\n  File \\\"runner.py\\\", line 4\n"
+        "ValueError: Functional bone rows require segmentation and full mask.\n"
+        "qt.qpa.plugin: Could not load the Qt platform plugin xcb.\n",
+    ) == "Error 1: ValueError: Functional bone rows require segmentation and full mask."
+
+
+def test_timelapse_profile_hint_distinguishes_analysis_from_contour_provenance() -> None:
+    source = MODULE_PATH.read_text(encoding="utf-8")
+
+    assert "Timelapsed profiles control registration and remodelling settings" in source
+    assert "They do not describe how the input contours were created" in source
 
 
 @pytest.mark.parametrize("profile, registered, directory", [

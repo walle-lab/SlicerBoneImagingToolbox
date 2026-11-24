@@ -260,9 +260,9 @@ def package_status_row(
     comparison = compare_versions(installed, latest)
     if installed and compare_versions(installed, spec.minimum_version) == "outdated":
         comparison = "outdated"
-    if installed and validation_error:
-        comparison = "outdated"
     status = "update_available" if comparison == "outdated" else comparison
+    if installed and validation_error and status != "update_available":
+        status = "repair_needed"
     action = None
     detail = ""
 
@@ -277,6 +277,9 @@ def package_status_row(
             detail = f"Newer PyPI release available: {latest}."
         else:
             detail = f"Installed version is below required minimum {spec.minimum_version}."
+    elif status == "repair_needed":
+        action = "repair"
+        detail = validation_error or "The installed package could not load a required runtime component."
     elif status == "current":
         detail = "Installed package is current."
     elif status == "current_unknown_latest":
@@ -394,3 +397,18 @@ def install_commands(spec: PackageSpec, *, installed: bool) -> tuple[str, ...]:
         commands.append(package_command)
         return tuple(commands)
     return (install_command(spec, installed=installed),)
+
+
+def repair_commands(spec: PackageSpec, *, detail: str = "") -> tuple[str, ...]:
+    """Force-reinstall the component identified by runtime validation."""
+    if spec.package_name == "bone-microarchitecture":
+        if "'pyopencl'" in detail:
+            return ("--upgrade --force-reinstall --prefer-binary pyopencl>=2024.1",)
+        if "'Metal'" in detail:
+            return ("--upgrade --force-reinstall --prefer-binary pyobjc-framework-Metal>=10",)
+    commands = list(install_commands(spec, installed=True))
+    command = commands[-1]
+    if "--force-reinstall" not in command:
+        command = f"--force-reinstall {command}"
+    commands[-1] = command
+    return tuple(commands)

@@ -4,6 +4,15 @@ All notable changes to this extension are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Distinguish a broken runtime installation from a package-version update in Toolbox Setup. Current packages with missing components such as Windows OpenCL now show **Repair needed** and retain the underlying dependency error.
+- Keep incomplete Functional Bone rows non-runnable while listing every missing contour, voidspace, and common-region prerequisite. Failed batch rows now include the final useful subprocess message instead of only an exit code.
+
+### Changed
+
+- Clarify in the Timelapsed profile selector that profiles control registration and remodelling settings, not the provenance of input contours.
+
 ## [0.3.8] - 2026-10-17
 
 ### Contour naming

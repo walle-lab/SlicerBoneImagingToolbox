@@ -24,6 +24,7 @@ from SlicerBoneImagingToolboxLib.package_status import (  # noqa: E402
     PackageStatusRow,
     install_commands,
     package_status_rows,
+    repair_commands,
 )
 from SlicerBoneImagingToolboxLib.registry import TOOLBOX_DISPLAY_NAME  # noqa: E402
 from SlicerBoneImagingToolboxLib.gpu_runtime import gpu_runtime_statuses  # noqa: E402
@@ -43,6 +44,7 @@ MODULE_VERSION = "0.1.0"
 STATUS_LABELS = {
     "missing": "Missing",
     "update_available": "Update available",
+    "repair_needed": "Repair needed",
     "current": "Current",
     "current_unknown_latest": "Current; latest unknown",
 }
@@ -112,7 +114,11 @@ class BoneImagingToolboxSetupLogic(ScriptedLoadableModuleLogic):
         return package_status_rows(DEFAULT_RUNTIME_PACKAGES, latest_versions=latest_versions, timeout=3)
 
     def install_or_update_package(self, row: PackageStatusRow):
-        commands = install_commands(row.spec, installed=row.installed_version is not None)
+        commands = (
+            repair_commands(row.spec, detail=row.detail)
+            if row.action == "repair"
+            else install_commands(row.spec, installed=row.installed_version is not None)
+        )
         for command in commands:
             slicer_pip_install(command)
         for name in list(sys.modules):
@@ -283,7 +289,7 @@ class BoneImagingToolboxSetupWidget(ScriptedLoadableModuleWidget):
         actions = [row for row in rows if row.action]
         self.installRecommendedButton.enabled = bool(actions)
         self.packageStatusLabel.text = (
-            f"{len(actions)} package update{'s' if len(actions) != 1 else ''} needed."
+            f"{len(actions)} package action{'s' if len(actions) != 1 else ''} needed."
             if actions
             else "All checked runtime packages are current or have no available PyPI status."
         )
@@ -312,14 +318,17 @@ class BoneImagingToolboxSetupWidget(ScriptedLoadableModuleWidget):
             label.toolTip = row.detail or row.spec.notes
             return label
 
-        label = "Install" if row.action == "install" else "Update"
+        label = {"install": "Install", "repair": "Repair"}.get(row.action, "Update")
         button = qt.QPushButton(label)
         button.toolTip = f"{label} {row.spec.display_name} in Slicer Python."
         button.clicked.connect(lambda _checked=False, status_row=row: self._install_package(status_row))
         return button
 
     def _install_package(self, row):
-        action = "install" if row.installed_version is None else "update"
+        action = {"install": "install", "repair": "repair"}.get(
+            row.action,
+            "install" if row.installed_version is None else "update",
+        )
         prompt = (
             f"{row.spec.display_name}\n\n"
             f"Installed: {row.installed_version or 'not installed'}\n"
@@ -347,15 +356,15 @@ class BoneImagingToolboxSetupWidget(ScriptedLoadableModuleWidget):
             return
         names = "\n".join(f"- {row.spec.display_name}" for row in rows)
         if not slicer.util.confirmYesNoDisplay(
-            f"Install or update these runtime packages in Slicer Python?\n\n{names}",
-            windowTitle="Install runtime packages",
+            f"Install, update, or repair these runtime packages in Slicer Python?\n\n{names}",
+            windowTitle="Maintain runtime packages",
         ):
             return
         for row in rows:
             try:
                 command = self._with_wait_cursor(lambda status_row=row: self.logic.install_or_update_package(status_row))
             except Exception as exc:
-                slicer.util.errorDisplay(f"Package install/update failed:\n{row.spec.display_name}\n\n{exc}")
+                slicer.util.errorDisplay(f"Package action failed:\n{row.spec.display_name}\n\n{exc}")
                 self._log(f"[packages] {row.spec.package_name} failed: {exc}")
                 break
             self._log(f"[packages] pip install {command}")

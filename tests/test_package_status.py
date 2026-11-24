@@ -15,6 +15,7 @@ from SlicerBoneImagingToolboxLib.package_status import (
     install_command,
     install_commands,
     package_status_row,
+    repair_commands,
     resolve_local_editable_repo,
 )
 from SlicerBoneImagingToolboxLib.slicer_pip import clean_pip_environment
@@ -174,6 +175,8 @@ def test_microarchitecture_setup_detects_missing_gpu_dependency(monkeypatch):
     original_import = builtins.__import__
 
     def missing_pyopencl(name, *args, **kwargs):
+        if name in {"bone_microarchitecture.case", "bone_microarchitecture.cache"}:
+            return object()
         if name == "pyopencl":
             raise ImportError("pyopencl is missing")
         return original_import(name, *args, **kwargs)
@@ -181,7 +184,40 @@ def test_microarchitecture_setup_detects_missing_gpu_dependency(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", missing_pyopencl)
     errors = package_status.collect_validation_errors((spec,))
     assert "pyopencl" in errors["bone-microarchitecture"]
-    row = package_status_row(spec, installed_versions={spec.package_name: "0.3.1"}, latest_versions={}, validation_errors=errors)
+    row = package_status_row(
+        spec,
+        installed_versions={spec.package_name: spec.minimum_version},
+        latest_versions={spec.package_name: spec.minimum_version},
+        validation_errors=errors,
+    )
+    assert row.status == "repair_needed"
+    assert row.action == "repair"
+    assert "pyopencl" in row.detail
+
+
+def test_microarchitecture_repair_force_reinstalls_windows_opencl(monkeypatch):
+    from SlicerBoneImagingToolboxLib import package_status
+
+    monkeypatch.setattr(package_status.sys, "platform", "win32")
+    spec = next(s for s in DEFAULT_RUNTIME_PACKAGES if s.package_name == "bone-microarchitecture")
+
+    assert repair_commands(
+        spec,
+        detail="GPU dependency 'pyopencl' is unavailable: DLL load failed",
+    ) == ("--upgrade --force-reinstall --prefer-binary pyopencl>=2024.1",)
+
+
+def test_outdated_package_with_validation_error_remains_an_update() -> None:
+    spec = PackageSpec("Example", "example", "example", "2.0")
+
+    row = package_status_row(
+        spec,
+        installed_versions={"example": "1.0"},
+        latest_versions={"example": "2.0"},
+        validation_errors={"example": "Import failed."},
+    )
+
+    assert row.status == "update_available"
     assert row.action == "update"
 
 
@@ -305,7 +341,7 @@ def test_public_fea_packages_do_not_install_from_adjacent_editable_checkouts() -
         assert "/active/" not in command_text
 
 
-def test_package_status_marks_invalid_runtime_import_as_update_needed() -> None:
+def test_package_status_marks_invalid_runtime_import_as_repair_needed() -> None:
     spec = PackageSpec(
         display_name="Plate/Rod Morphometry",
         package_name="plate-rod-thinning",
@@ -316,13 +352,13 @@ def test_package_status_marks_invalid_runtime_import_as_update_needed() -> None:
 
     row = package_status_row(
         spec,
-        installed_versions={"plate-rod-thinning": "0.1.0"},
-        latest_versions={"plate-rod-thinning": "0.1.0"},
+        installed_versions={"plate-rod-thinning": "0.1.2"},
+        latest_versions={"plate-rod-thinning": "0.1.2"},
         validation_errors={"plate-rod-thinning": "Required runtime module is unavailable."},
     )
 
-    assert row.status == "update_available"
-    assert row.action == "update"
+    assert row.status == "repair_needed"
+    assert row.action == "repair"
     assert row.detail == "Required runtime module is unavailable."
 
 
