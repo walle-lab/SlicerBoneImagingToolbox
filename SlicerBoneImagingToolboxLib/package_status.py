@@ -58,7 +58,7 @@ DEFAULT_RUNTIME_PACKAGES = (
         display_name="Timelapsed HR-pQCT",
         package_name="timelapsed-hrpqct",
         import_name="timelapsedhrpqct",
-        minimum_version="2.0.48",
+        minimum_version="2.0.49",
         constraints=("hrpqct-geodesic-contour>=0.1.1",),
         notes="Longitudinal HR-pQCT runtime package: timelapsed-hrpqct.",
     ),

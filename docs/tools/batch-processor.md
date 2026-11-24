@@ -24,6 +24,7 @@ If the dataset is not yet normalized, run the Dataset Naming Helper first. The B
 Each tool-specific profile defines the command, required inputs, and expected outputs for the selected tool. Most analysis workflows use curated profiles rather than a batch expert-settings interface. Bone Contouring also discovers saved custom contouring profiles, including compatible recipes exported from scene mode. Contact the toolbox maintainers to discuss a new large-scale analysis workflow.
 
 Timelapsed profiles control registration and remodelling settings. They do not indicate how the input contours were generated; contours may come from Imported Contours, Bone Contouring, or another prepared source.
+With Timelapsed HR-pQCT 2.0.49 or later, the Standard profile detects grayscale changes within the common mask without requiring a binary segmentation flip.
 
 For published CNN compartments, select **Bone Contouring → U-Net contours (Neeteson et al.) + LH SEG**
 and a device. Standard and saved custom contour profiles remain in the same list, with

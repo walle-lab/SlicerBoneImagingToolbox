@@ -4,6 +4,8 @@ All notable changes to this extension are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.9] - 2026-11-24
+
 ### Fixed
 
 - Distinguish a broken runtime installation from a package-version update in Toolbox Setup. Current packages with missing components such as Windows OpenCL now show **Repair needed** and retain the underlying dependency error.
@@ -12,6 +14,7 @@ All notable changes to this extension are documented in this file.
 ### Changed
 
 - Document that Timelapsed profiles control registration and remodelling settings, not the provenance of input contours.
+- Require Timelapsed HR-pQCT 2.0.49. The Standard profile no longer requires a binary segmentation flip; it still measures changes within the same common mask.
 
 ## [0.3.8] - 2026-10-17
 
