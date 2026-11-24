@@ -3427,11 +3427,14 @@ def test_batch_failure_status_includes_last_useful_process_line(monkeypatch):
     ) == "Error 1: ValueError: Functional bone rows require segmentation and full mask."
 
 
-def test_timelapse_profile_hint_distinguishes_analysis_from_contour_provenance() -> None:
+def test_timelapse_profile_guidance_is_documented_without_crowding_interface() -> None:
     source = MODULE_PATH.read_text(encoding="utf-8")
+    documentation = (ROOT / "docs" / "tools" / "batch-processor.md").read_text(encoding="utf-8")
 
-    assert "Timelapsed profiles control registration and remodelling settings" in source
-    assert "They do not describe how the input contours were created" in source
+    assert "Timelapsed profiles control registration and remodelling settings" not in source
+    assert "do not indicate how the input contours were generated" not in source
+    assert "Timelapsed profiles control registration and remodelling settings" in documentation
+    assert "do not indicate how the input contours were generated" in documentation
 
 
 @pytest.mark.parametrize("profile, registered, directory", [

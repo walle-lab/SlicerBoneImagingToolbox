@@ -2895,16 +2895,8 @@ class BatchProcessorWidget(ScriptedLoadableModuleWidget):
     def _update_profile_hint(self):
         if not hasattr(self, "profileHintLabel"):
             return
-        tool = self._selected_tool_key()
-        if tool == "timelapse":
-            hint = (
-                "Timelapsed profiles control registration and remodelling settings. "
-                "They do not describe how the input contours were created."
-            )
-            show_hint = True
-        else:
-            hint = "For Bone Contouring, radius/tibia/knee settings are selected automatically from each row's VOI."
-            show_hint = tool == "bone_contouring" and self._is_selected_profile_shipped()
+        hint = "For Bone Contouring, radius/tibia/knee settings are selected automatically from each row's VOI."
+        show_hint = self._selected_tool_key() == "bone_contouring" and self._is_selected_profile_shipped()
         self.profileHintLabel.text = hint
         self.profileCombo.toolTip = hint if show_hint else ""
         self.profileHintLabel.visible = show_hint

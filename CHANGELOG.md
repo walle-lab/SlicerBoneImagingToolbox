@@ -11,7 +11,7 @@ All notable changes to this extension are documented in this file.
 
 ### Changed
 
-- Clarify in the Timelapsed profile selector that profiles control registration and remodelling settings, not the provenance of input contours.
+- Document that Timelapsed profiles control registration and remodelling settings, not the provenance of input contours.
 
 ## [0.3.8] - 2026-10-17
 
